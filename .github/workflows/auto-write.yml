@@ -1,96 +1,112 @@
-name: Daily GEO SEO Auto Blogger for Cloudflare
+name: Daily GEO SEO Pure HTML Blogger (Ultimate Fully Featured)
 
 on:
   schedule:
-    - cron: '0 1 * * *' # 每天早上 9:00 发射
-  workflow_dispatch: # 支持手动点击测试
+    - cron: '0 1 * * *' # 每天早上 9:00 全自动发射
+  workflow_dispatch: 
 
 jobs:
-  auto-blog:
+  auto-html-blog:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Initialize Bulletproof DB
+      - name: Initialize Database Pool
         run: |
           if [ ! -f "keywords.txt" ]; then echo "12kW H-Beam 3D laser cutting machine price" > keywords.txt; fi
           if [ ! -f "backlinks.txt" ]; then
             cat << 'EOF' > backlinks.txt
           https://pclgroupcncmachine.com/structural-steel-laser-cutting/
           https://pclgroupcncmachine.com/
-          https://pclgroupcncmachine.com/h-series-beam-cutting-machine-cutter/
-          https://pclgroupcncmachine.com/3d-robot-laser-cutting-machine/
-          https://pclgroupcncmachine.com/teaching-free-robotic-welding-station/
-          https://pclgroupcncmachine.com/gantry-intelligent-welding-solution/
-          https://pclgroupcncmachine.com/cobot-welding-machine/
-          https://pclgroupcncmachine.com/rotary-large-diameter-steel-pipe-cutter/
-          https://pclgroupcncmachine.com/tube-laser-cutting-machine/
           EOF
           fi
-
           if [ ! -f "images.txt" ]; then
-            cat << 'EOF' > images.txt
-          https://pclgroupcncmachine.com/wp-content/uploads/2024/12/tcp-h-beam-cutting-machine-scaled.jpg
-          https://pclgroupcncmachine.com/wp-content/uploads/2020/11/3D-robot-laser-cutting-machine.webp
-          https://pclgroupcncmachine.com/wp-content/uploads/2026/01/offline-software.png
-          https://pclgroupcncmachine.com/wp-content/uploads/2025/09/1.jpg
-          https://pclgroupcncmachine.com/wp-content/uploads/2026/05/gantry-welding-solution.webp
-          https://pclgroupcncmachine.com/wp-content/uploads/2026/02/cobot-welding-machine.jpg
-          https://pclgroupcncmachine.com/wp-content/uploads/2026/05/tube-laser-machine.webp
-          https://pclgroupcncmachine.com/wp-content/uploads/2026/05/cutting-samples.webp
-          EOF
+            echo "https://pclgroupcncmachine.com/wp-content/uploads/2024/12/tcp-h-beam-cutting-machine-scaled.jpg" > images.txt
           fi
 
-      - name: Rotate and Pick Pool Data
+      - name: Pick and Rotate Data Pool
         id: picker
         run: |
+          # 1. 抽取当天核心霸屏词
           KEYWORD=$(head -n 1 keywords.txt | xargs)
           echo "keyword=$KEYWORD" >> $GITHUB_OUTPUT
           tail -n +2 keywords.txt > t1.txt && echo "$KEYWORD" >> t1.txt && mv t1.txt keywords.txt
           
+          # 2. 抽取当天用于做锚文本的“链接库”目标网址
           LINK=$(head -n 1 backlinks.txt | xargs)
           echo "link=$LINK" >> $GITHUB_OUTPUT
           tail -n +2 backlinks.txt > t2.txt && echo "$LINK" >> t2.txt && mv t2.txt backlinks.txt
           
-          IMG=$(head -n 1 images.txt | xargs)
+          # 3. 从图片库随机抽取一张真机高清图
+          IMG=$(shuf -n 1 images.txt | xargs)
           echo "img=$IMG" >> $GITHUB_OUTPUT
-          tail -n +2 images.txt > t3.txt && echo "$IMG" >> t3.txt && mv t3.txt images.txt
 
-      - name: Call Gemini Humanized SEO AI
+      - name: Generate High-SEO Prompt (Anti-AI Flavor)
+        if: steps.picker.outputs.keyword != ''
+        run: |
+          # 将高度定制、去除AI痕迹、带链接库与Schema的提示词直接打包成安全临时文件，防碎、防报错
+          cat << 'EOF' > prompt_template.txt
+          You are an elite B2B machinery sales director and hands-on welding engineer. Write a highly professional, technically precise industrial whitepaper for the keyword "${{ steps.picker.outputs.keyword }}".
+          
+          [CRITICAL - REMOVE ALL AI FLAVOR]:
+          - Do NOT use typical AI transition words like "In conclusion", "Crucial role", "Furthermore", "In summary", "Moreover", "Dive deep", "Testament".
+          - Use a confident, direct, and slightly blunt tone, common among industrial manufacturing experts.
+          - Speak strictly in terms of business ROI, steel fabricator pain points, mechanical tolerances, and factory output metrics.
+          
+          [REQUIRED STRUCTURE]:
+          1. Technical Evaluation (Use realistic numbers, structural tolerances, H-beam dimensions like 300x300mm or HEA/HEB standards).
+          2. Machine Specification & Advantages (Break down real industrial components: cutting heads, heavy-duty chucks, rack and pinion systems).
+          3. Exact Internal Hyperlink Implementation (Link Library): You MUST seamlessly embed the exact string below as an organic anchor text hyperlink in the middle of a paragraph. Do not create an isolated link. 
+             Anchor text MUST be a natural phrasing related to structural steel processing or automation.
+             Link target: "${{ steps.picker.outputs.link }}"
+          4. Image Placement: Embed this exact image markdown element inside the body text organically:
+             <img src="${{ steps.picker.outputs.img }}" alt="${{ steps.picker.outputs.keyword }}" style="width:100%;max-width:800px;border-radius:8px;margin:20px 0;box-shadow:0 4px 6px rgba(0,0,0,0.1);">
+          5. Real-world FAQ Section: Provide 3 hard-core, realistic technical Q&As that global steel buyers ask during commercial procurement.
+          6. Call to Action: Add contact methods at the bottom: WhatsApp: 8618660174681, email: pclmachinery@outlook.com.
+          
+          [OUTPUT FORMAT]:
+          Return the entire response as a single, valid, self-contained HTML file (including <html>, <head> with a catchy <title>, <style> for a premium clean layout, and <body>). 
+          At the very bottom of the HTML document, just before the closing </body> tag, you MUST inject a perfectly structured <script type="application/ld+json"> containing a dual JSON-LD Schema that wraps BOTH Article and FAQPage into a single graph.
+          Output ONLY the raw HTML code. Do NOT enclose the response in markdown blocks like ```html ... 
+```.
+          EOF
+
+      - name: Package Payload Safely via JQ
+        if: steps.picker.outputs.keyword != ''
+        run: |
+          PROMPT_CONTENT=$(cat prompt_template.txt)
+          jq -n --arg text "$PROMPT_CONTENT" '{"contents": [{"parts": [{"text": $text}]}]}' > request.json
+
+      - name: Call Gemini API
         if: steps.picker.outputs.keyword != ''
         id: gemini
         run: |
-          KEYWORD="${{ steps.picker.outputs.keyword }}"
-          LINK="${{ steps.picker.outputs.link }}"
-          IMG="${{ steps.picker.outputs.img }}"
-          
           RESPONSE=$(curl -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${{ secrets.GEMINI_API_KEY }}" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"contents\": [{
-                \"parts\": [{
-                  \"text\": \"You are an elite B2B engineering journalist specializing in heavy steel automation. Write a deep-dive, professional technical article (800 words) based on the core keyword: '$KEYWORD'.\n\n[STRICT FORMATTING & ANTI-AI RULE]:\n- DO NOT use any markdown heading symbols like #, ##, ###, or bold markdown like **.\n- Use standard HTML tags for layout structure: Use <h2> and <h3> for headings, <p> for paragraphs, and <ul>/<li> for lists.\n\n[SEO, FAQ & CONTACT INTEGRATION]:\n1. Title Generation: Create a high-converting GEO title in the Front Matter yaml.\n2. Exact Phrase Match: Naturally include the exact phrase 'heavy duty CNC laser steel plate fabrication' and '$KEYWORD' at least twice in the text.\n3. Backlink Injection: Seamlessly integrate an anchor text hyperlink pointing exactly to: '$LINK'.\n4. Image Embedding: Insert this exact image URL into a relevant sub-section using an HTML img tag: <img src='$IMG' alt='$KEYWORD' style='width:100%; height:auto; border-radius:8px;'>.\n5. FAQ Section: Near the end, create a dedicated '<h2>Frequently Asked Questions</h2>' section containing 3 highly relevant technical questions and answers related to the keyword ($KEYWORD). Use <h3> for questions and <p> for answers.\n6. Call to Action (Contact): At the absolute end of the body text (before schema), add a professional contact section stating: 'For customized heavy-duty steel processing configurations, please reach out to PCL Group technical team via WhatsApp: 8618660174681 or email: pclmachinery@outlook.com.'\n7. Advanced Schema Injection: Generate a clean JSON-LD Schema wrapped in <script type='application/ld+json'>...</script> combining BOTH @type: 'Article' and @type: 'FAQPage' containing the 3 FAQ Q&As generated above. Use 2026-06-12 as datePublished and author PCL Group.\n8. Output format: Start directly with Front Matter. Do not wrap code in markdown code blocks.\"
-                }]
-              }]
-            }")
+            -d @request.json)
           
           ARTICLE_TEXT=$(echo "$RESPONSE" | jq -r '.candidates[0].content.parts[0].text')
-          echo "$ARTICLE_TEXT" > temp_post.md
           
-          CLEAN_TITLE=$(echo "$KEYWORD" | tr ' ' '-')
+          # 双重过滤：彻底清洗任何潜在的 markdown 包装痕迹
+          echo "$ARTICLE_TEXT" | sed 's/^```html//g' | sed 's/^```//g' | sed 's/```$//g' > temp_page.html
+          
+          CLEAN_TITLE=$(echo "${{ steps.picker.outputs.keyword }}" | tr ' ' '-')
           echo "clean_title=$CLEAN_TITLE" >> $GITHUB_OUTPUT
 
-      - name: Commit & Push to Repository
+      - name: Push to Cloudflare Directory
         if: steps.picker.outputs.keyword != ''
         run: |
-          git config --global user.name "PCL Content Writer"
+          git config --global user.name "PCL HTML Automatic Publisher"
           git config --global user.email "seo@pclgroupcncmachine.com"
           
-          mkdir -p content/posts
-          FILE_NAME="content/posts/$(date +%Y-%m-%d)-${{ steps.gemini.outputs.clean_title }}.md"
-          mv temp_post.md $FILE_NAME
+          mkdir -p blog
+          FILE_NAME="blog/${{ steps.gemini.outputs.clean_title }}.html"
+          mv temp_page.html $FILE_NAME
+          
+          # 清理运行产生的临时垃圾文件
+          rm -f request.json prompt_template.txt
           
           git add .
-          git commit -m "site(geo): automated post for ${{ steps.picker.outputs.keyword }}"
+          git commit -m "site(geo): deployed feature-complete advanced html for ${{ steps.picker.outputs.keyword }}"
           git push
