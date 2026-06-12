@@ -1,0 +1,96 @@
+name: Daily GEO SEO Auto Blogger Ultimate
+
+on:
+  schedule:
+    - cron: '0 1 * * *' # 每天北京时间早上 9:00 准时发射
+  workflow_dispatch: # 允许手动随时点击测试
+
+jobs:
+  auto-blog:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Initialize Bulletproof DB
+        run: |
+          if [ ! -f "keywords.txt" ]; then echo "12kW H-Beam 3D laser cutting machine price" > keywords.txt; fi
+          if [ ! -f "backlinks.txt" ]; then
+            cat << 'EOF' > backlinks.txt
+          https://pclgroupcncmachine.com/structural-steel-laser-cutting/
+          https://pclgroupcncmachine.com/
+          https://pclgroupcncmachine.com/h-series-beam-cutting-machine-cutter/
+          https://pclgroupcncmachine.com/3d-robot-laser-cutting-machine/
+          https://pclgroupcncmachine.com/teaching-free-robotic-welding-station/
+          https://pclgroupcncmachine.com/gantry-intelligent-welding-solution/
+          https://pclgroupcncmachine.com/cobot-welding-machine/
+          https://pclgroupcncmachine.com/rotary-large-diameter-steel-pipe-cutter/
+          https://pclgroupcncmachine.com/tube-laser-cutting-machine/
+          EOF
+          fi
+
+          if [ ! -f "images.txt" ]; then
+            cat << 'EOF' > images.txt
+          https://pclgroupcncmachine.com/wp-content/uploads/2024/12/tcp-h-beam-cutting-machine-scaled.jpg
+          https://pclgroupcncmachine.com/wp-content/uploads/2020/11/3D-robot-laser-cutting-machine.webp
+          https://pclgroupcncmachine.com/wp-content/uploads/2026/01/offline-software.png
+          https://pclgroupcncmachine.com/wp-content/uploads/2025/09/1.jpg
+          https://pclgroupcncmachine.com/wp-content/uploads/2026/05/gantry-welding-solution.webp
+          https://pclgroupcncmachine.com/wp-content/uploads/2026/02/cobot-welding-machine.jpg
+          https://pclgroupcncmachine.com/wp-content/uploads/2026/05/tube-laser-machine.webp
+          https://pclgroupcncmachine.com/wp-content/uploads/2026/05/cutting-samples.webp
+          EOF
+          fi
+
+      - name: Rotate and Pick Pool Data
+        id: picker
+        run: |
+          KEYWORD=$(head -n 1 keywords.txt | xargs)
+          echo "keyword=$KEYWORD" >> $GITHUB_OUTPUT
+          tail -n +2 keywords.txt > t1.txt && echo "$KEYWORD" >> t1.txt && mv t1.txt keywords.txt
+          
+          LINK=$(head -n 1 backlinks.txt | xargs)
+          echo "link=$LINK" >> $GITHUB_OUTPUT
+          tail -n +2 backlinks.txt > t2.txt && echo "$LINK" >> t2.txt && mv t2.txt backlinks.txt
+          
+          IMG=$(head -n 1 images.txt | xargs)
+          echo "img=$IMG" >> $GITHUB_OUTPUT
+          tail -n +2 images.txt > t3.txt && echo "$IMG" >> t3.txt && mv t3.txt images.txt
+
+      - name: Call Gemini Humanized SEO AI
+        if: steps.picker.outputs.keyword != ''
+        id: gemini
+        run: |
+          KEYWORD="${{ steps.picker.outputs.keyword }}"
+          LINK="${{ steps.picker.outputs.link }}"
+          IMG="${{ secrets.PICKER_IMG }}"
+          [ -z "$IMG" ] && IMG="${{ steps.picker.outputs.img }}"
+          
+          RESPONSE=$(curl -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${{ secrets.GEMINI_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"contents\": [{
+                \"parts\": [{
+                  \"text\": \"You are an elite B2B engineering journalist specializing in heavy steel automation. Write a deep-dive, professional technical article (800 words) based on the core keyword: '$KEYWORD'.\n\n[STRICT FORMATTING & ANTI-AI RULE]:\n- DO NOT use any markdown heading symbols like #, ##, ###, or bold markdown like **.\n- Use standard HTML tags for layout structure: Use <h2> and <h3> for headings, <p> for paragraphs, and <ul>/<li> for lists.\n\n[SEO, FAQ & CONTACT INTEGRATION]:\n1. Title Generation: Create a high-converting GEO title in the Front Matter yaml.\n2. Exact Phrase Match: Naturally include the exact phrase 'heavy duty CNC laser steel plate fabrication' and '$KEYWORD' at least twice in the text.\n3. Backlink Injection: Seamlessly integrate an anchor text hyperlink pointing exactly to: '$LINK'.\n4. Image Embedding: Insert this exact image URL into a relevant sub-section using an HTML img tag: <img src='$IMG' alt='$KEYWORD' style='width:100%; height:auto; border-radius:8px;'>.\n5. FAQ Section: Near the end, create a dedicated '<h2>Frequently Asked Questions</h2>' section containing 3 highly relevant technical questions and answers related to the keyword ($KEYWORD). Use <h3> for questions and <p> for answers.\n6. Call to Action (Contact): At the absolute end of the body text (before schema), add a professional contact section stating: 'For customized heavy-duty steel processing configurations, please reach out to PCL Group technical team via WhatsApp: 8618660174681 or email: pclmachinery@outlook.com.'\n7. Advanced Schema Injection: Generate a clean JSON-LD Schema wrapped in <script type='application/ld+json'>...</script> combining BOTH @type: 'Article' and @type: 'FAQPage' containing the 3 FAQ Q&As generated above. Use 2026-06-12 as datePublished and author PCL Group.\n8. Output format: Start directly with Front Matter. Do not wrap code in markdown code blocks.\"
+                }]
+              }]
+            }")
+          
+          ARTICLE_TEXT=$(echo "$RESPONSE" | jq -r '.candidates[0].content.parts[0].text')
+          echo "$ARTICLE_TEXT" > temp_post.md
+          
+          CLEAN_TITLE=$(echo "$KEYWORD" | tr ' ' '-')
+          echo "clean_title=$CLEAN_TITLE" >> $GITHUB_OUTPUT
+
+      - name: Commit & Push to Vercel Engine
+        if: steps.picker.outputs.keyword != ''
+        run: |
+          git config --global user.name "PCL Professional Blogger"
+          git config --global user.email "seo@pclgroupcncmachine.com"
+          
+          FILE_NAME="content/posts/$(date +%Y-%m-%d)-${{ steps.gemini.outputs.clean_title }}.md"
+          mv temp_post.md $FILE_NAME
+          
+          git add .
+          git commit -m "site(geo): ultimate anti-ai post for ${{ steps.picker.outputs.keyword }}"
+          git push
