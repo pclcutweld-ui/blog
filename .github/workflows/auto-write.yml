@@ -1,16 +1,42 @@
-name: Daily GEO SEO Auto Blogger Ultimate
+name: Daily GEO SEO Auto Blogger Ultimate (GitHub Pages Native)
 
 on:
   schedule:
     - cron: '0 1 * * *' # 每天北京时间早上 9:00 准时发射
   workflow_dispatch: # 允许手动随时点击测试
 
+# 核心权限：允许脚本直接发布网页
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
 jobs:
-  auto-blog:
+  auto-blog-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
+      - name: Checkout Code with Submodules
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Setup Go Language Environment
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21' # 强行给系统注入 Go 环境，彻底解决依赖问题
+
+      - name: Setup Hugo Build Engine
+        uses: showks/setup-hugo@v1
+        with:
+          hugo-version: '0.125.0' # 锁定最稳的现代版 Hugo
 
       - name: Initialize Bulletproof DB
         run: |
@@ -63,8 +89,7 @@ jobs:
         run: |
           KEYWORD="${{ steps.picker.outputs.keyword }}"
           LINK="${{ steps.picker.outputs.link }}"
-          IMG="${{ secrets.PICKER_IMG }}"
-          [ -z "$IMG" ] && IMG="${{ steps.picker.outputs.img }}"
+          IMG="${{ steps.picker.outputs.img }}"
           
           RESPONSE=$(curl -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${{ secrets.GEMINI_API_KEY }}" \
             -H "Content-Type: application/json" \
@@ -82,15 +107,31 @@ jobs:
           CLEAN_TITLE=$(echo "$KEYWORD" | tr ' ' '-')
           echo "clean_title=$CLEAN_TITLE" >> $GITHUB_OUTPUT
 
-      - name: Commit & Push to Vercel Engine
+      - name: Save Post and Update Keyword File
         if: steps.picker.outputs.keyword != ''
         run: |
-          git config --global user.name "PCL Professional Blogger"
+          git config --global user.name "PCL Auto Publisher"
           git config --global user.email "seo@pclgroupcncmachine.com"
           
+          # 创建存放文章的文件夹（防止不存在）
+          mkdir -p content/posts
           FILE_NAME="content/posts/$(date +%Y-%m-%d)-${{ steps.gemini.outputs.clean_title }}.md"
           mv temp_post.md $FILE_NAME
           
           git add .
-          git commit -m "site(geo): ultimate anti-ai post for ${{ steps.picker.outputs.keyword }}"
+          git commit -m "site(geo): auto-generate post and rotate database"
           git push
+
+      - name: Native Hugo Build Engine (No Vercel Needed)
+        run: |
+          # 这一步，GitHub Actions 会在自己有 Go 环境的系统里完美打包，绝不报错
+          hugo --gc --minify
+
+      - name: Upload Static Web Artifacts
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./public
+
+      - name: Deploy to GitHub Pages Live
+        id: deployment
+        uses: actions/deploy-pages@v4
