@@ -14,7 +14,6 @@ jobs:
 
       - name: Initialize Database Pool
         run: |
-          # 如果仓库里没有这些基础文件则创建默认保底，如果有了会直接使用你写的所有链接和图片
           if [ ! -f "keywords.txt" ]; then echo "12kW H-Beam 3D laser cutting machine price" > keywords.txt; fi
           if [ ! -f "backlinks.txt" ]; then
             cat << 'EOF' > backlinks.txt
@@ -29,24 +28,23 @@ jobs:
       - name: Pick and Rotate Data Pool
         id: picker
         run: |
-          # 1. 轮流提取当天核心霸屏词
+          # 1. 抽取当天核心霸屏词
           KEYWORD=$(head -n 1 keywords.txt | xargs)
           echo "keyword=$KEYWORD" >> $GITHUB_OUTPUT
           tail -n +2 keywords.txt > t1.txt && echo "$KEYWORD" >> t1.txt && mv t1.txt keywords.txt
           
-          # 2. 从你的链接库里提取当天做锚文本的外链（绝不减少，按顺序轮流提取）
+          # 2. 抽取当天用于做锚文本的“链接库”目标网址（绝不减少，轮流抽取）
           LINK=$(head -n 1 backlinks.txt | xargs)
           echo "link=$LINK" >> $GITHUB_OUTPUT
           tail -n +2 backlinks.txt > t2.txt && echo "$LINK" >> t2.txt && mv t2.txt backlinks.txt
           
-          # 3. 从你的图片库里随机盲抽一张真机大图，全自动加上 SEO Alt 标签
+          # 3. 从图片库随机抽取一张真机高清图
           IMG=$(shuf -n 1 images.txt | xargs)
           echo "img=$IMG" >> $GITHUB_OUTPUT
 
       - name: Generate High-SEO Prompt (Anti-AI Flavor)
         if: steps.picker.outputs.keyword != ''
         run: |
-          # 核心大招：生成强力去AI味提示词，强制打散埋入你的链接和图片
           cat << 'EOF' > prompt_template.txt
           You are an elite B2B machinery sales director and hands-on welding engineer. Write a highly professional, technically precise industrial whitepaper for the keyword "${{ steps.picker.outputs.keyword }}".
           
@@ -75,21 +73,25 @@ jobs:
       - name: Package Payload Safely via JQ
         if: steps.picker.outputs.keyword != ''
         run: |
-          # 绝不报错的核心：使用 JQ 将复杂的 HTML 逻辑直接打包成环境安全变量，阻断转义字符报错
           PROMPT_CONTENT=$(cat prompt_template.txt)
           jq -n --arg text "$PROMPT_CONTENT" '{"contents": [{"parts": [{"text": $text}]}]}' > request.json
 
       - name: Call Gemini API
         if: steps.picker.outputs.keyword != ''
         id: gemini
+        env:
+          GEMINI_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          RESPONSE=$(curl -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${{ secrets.GEMINI_API_KEY }}" \
+          # 【降维打击级修复】不再把 Key 直接拼进 URL 字符串，而是用 x-goog-api-key 请求头安全传输！
+          # 这能 100% 免疫任何特殊字符导致的 Malformed input 网址报错
+          RESPONSE=$(curl -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent" \
             -H "Content-Type: application/json" \
+            -H "x-goog-api-key: $GEMINI_KEY" \
             -d @request.json)
           
           ARTICLE_TEXT=$(echo "$RESPONSE" | jq -r '.candidates[0].content.parts[0].text')
           
-          # 双层过滤机制：确保清洗掉任何顽固的 markdown 符号，只留下完美的纯 HTML 代码
+          # 双重过滤潜在的 markdown 标记
           echo "$ARTICLE_TEXT" | sed 's/^```html//g' | sed 's/^```//g' | sed 's/```$//g' > temp_page.html
           
           CLEAN_TITLE=$(echo "${{ steps.picker.outputs.keyword }}" | tr ' ' '-')
@@ -105,9 +107,8 @@ jobs:
           FILE_NAME="blog/${{ steps.gemini.outputs.clean_title }}.html"
           mv temp_page.html $FILE_NAME
           
-          # 擦除运行产生的临时过渡文件
           rm -f request.json prompt_template.txt
           
           git add .
-          git commit -m "site(geo): deployed advanced non-ai flavor features for ${{ steps.picker.outputs.keyword }}"
+          git commit -m "site(geo): deployed feature-complete advanced html for ${{ steps.picker.outputs.keyword }}"
           git push
