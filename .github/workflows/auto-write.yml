@@ -1,9 +1,10 @@
-name: Daily GEO SEO Pure HTML Blogger
+name: Daily GEO SEO Pure HTML Blogger (Ultimate Fully Featured)
 
 on:
   schedule:
     - cron: '0 1 * * *' # 每天早上 9:00 全自动发射
-  workflow_dispatch: 
+  workflow_dispatch: # 支持手动点击测试
+
 jobs:
   auto-html-blog:
     runs-on: ubuntu-latest
@@ -13,6 +14,7 @@ jobs:
 
       - name: Initialize Database Pool
         run: |
+          # 如果文件不存在才会建立保底默认值，如果存在则直接读取你自己的
           if [ ! -f "keywords.txt" ]; then echo "12kW H-Beam 3D laser cutting machine price" > keywords.txt; fi
           if [ ! -f "backlinks.txt" ]; then
             cat << 'EOF' > backlinks.txt
@@ -32,19 +34,18 @@ jobs:
           echo "keyword=$KEYWORD" >> $GITHUB_OUTPUT
           tail -n +2 keywords.txt > t1.txt && echo "$KEYWORD" >> t1.txt && mv t1.txt keywords.txt
           
-          # 2. 抽取当天用于做锚文本的“链接库”目标网址
+          # 2. 抽取当天用于做锚文本的“链接库”目标网址（绝不减少，轮流抽取）
           LINK=$(head -n 1 backlinks.txt | xargs)
           echo "link=$LINK" >> $GITHUB_OUTPUT
           tail -n +2 backlinks.txt > t2.txt && echo "$LINK" >> t2.txt && mv t2.txt backlinks.txt
           
-          # 3. 从图片库随机抽取一张真机高清图
+          # 3. 从图片库（images.txt）里随机抽取一张你准备好的高清大图
           IMG=$(shuf -n 1 images.txt | xargs)
           echo "img=$IMG" >> $GITHUB_OUTPUT
 
       - name: Generate High-SEO Prompt (Anti-AI Flavor)
         if: steps.picker.outputs.keyword != ''
         run: |
-          # 将高度定制、去除AI痕迹、带链接库与Schema的提示词直接打包成安全临时文件，防碎、防报错
           cat << 'EOF' > prompt_template.txt
           You are an elite B2B machinery sales director and hands-on welding engineer. Write a highly professional, technically precise industrial whitepaper for the keyword "${{ steps.picker.outputs.keyword }}".
           
@@ -59,7 +60,7 @@ jobs:
           3. Exact Internal Hyperlink Implementation (Link Library): You MUST seamlessly embed the exact string below as an organic anchor text hyperlink in the middle of a paragraph. Do not create an isolated link. 
              Anchor text MUST be a natural phrasing related to structural steel processing or automation.
              Link target: "${{ steps.picker.outputs.link }}"
-          4. Image Placement: Embed this exact image markdown element inside the body text organically:
+          4. Image Placement: Embed this exact image HTML element inside the body text organically to display the real machine:
              <img src="${{ steps.picker.outputs.img }}" alt="${{ steps.picker.outputs.keyword }}" style="width:100%;max-width:800px;border-radius:8px;margin:20px 0;box-shadow:0 4px 6px rgba(0,0,0,0.1);">
           5. Real-world FAQ Section: Provide 3 hard-core, realistic technical Q&As that global steel buyers ask during commercial procurement.
           6. Call to Action: Add contact methods at the bottom: WhatsApp: 8618660174681, email: pclmachinery@outlook.com.
@@ -67,8 +68,7 @@ jobs:
           [OUTPUT FORMAT]:
           Return the entire response as a single, valid, self-contained HTML file (including <html>, <head> with a catchy <title>, <style> for a premium clean layout, and <body>). 
           At the very bottom of the HTML document, just before the closing </body> tag, you MUST inject a perfectly structured <script type="application/ld+json"> containing a dual JSON-LD Schema that wraps BOTH Article and FAQPage into a single graph.
-          Output ONLY the raw HTML code. Do NOT enclose the response in markdown blocks like ```html ... 
-```.
+          Output ONLY the raw HTML code. Do NOT enclose the response in markdown blocks like ```html ... ```.
           EOF
 
       - name: Package Payload Safely via JQ
@@ -86,8 +86,6 @@ jobs:
             -d @request.json)
           
           ARTICLE_TEXT=$(echo "$RESPONSE" | jq -r '.candidates[0].content.parts[0].text')
-          
-          # 双重过滤：彻底清洗任何潜在的 markdown 包装痕迹
           echo "$ARTICLE_TEXT" | sed 's/^```html//g' | sed 's/^```//g' | sed 's/```$//g' > temp_page.html
           
           CLEAN_TITLE=$(echo "${{ steps.picker.outputs.keyword }}" | tr ' ' '-')
@@ -103,9 +101,8 @@ jobs:
           FILE_NAME="blog/${{ steps.gemini.outputs.clean_title }}.html"
           mv temp_page.html $FILE_NAME
           
-          # 清理运行产生的临时垃圾文件
           rm -f request.json prompt_template.txt
           
           git add .
-          git commit -m "site(geo): deployed feature-complete advanced html for ${{ steps.picker.outputs.keyword }}"
+          git commit -m "site(geo): deployed advanced html for ${{ steps.picker.outputs.keyword }}"
           git push
