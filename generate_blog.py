@@ -1,8 +1,8 @@
 import os
 import json
-import urllib.request
 import time
 import re
+import requests
 
 def run():
     # 1. 确保基础文件池存在
@@ -12,11 +12,11 @@ def run():
             
     if not os.path.exists("backlinks.txt"):
         with open("backlinks.txt", "w", encoding="utf-8") as f:
-            f.write("[https://pclgroupcncmachine.com/structural-steel-laser-cutting/](https://pclgroupcncmachine.com/structural-steel-laser-cutting/)\n[https://pclgroupcncmachine.com/](https://pclgroupcncmachine.com/)\n")
+            f.write("https://pclgroupcncmachine.com/structural-steel-laser-cutting/\nhttps://pclgroupcncmachine.com/\n")
             
     if not os.path.exists("images.txt"):
         with open("images.txt", "w", encoding="utf-8") as f:
-            f.write("[https://pclgroupcncmachine.com/wp-content/uploads/2024/12/tcp-h-beam-cutting-machine-scaled.jpg](https://pclgroupcncmachine.com/wp-content/uploads/2024/12/tcp-h-beam-cutting-machine-scaled.jpg)\n")
+            f.write("https://pclgroupcncmachine.com/wp-content/uploads/2024/12/tcp-h-beam-cutting-machine-scaled.jpg\n")
 
     # 精准轮转提取关键词
     with open("keywords.txt", "r", encoding="utf-8") as f:
@@ -31,7 +31,7 @@ def run():
     with open("backlinks.txt", "r", encoding="utf-8") as f:
         links = [line.strip() for line in f if line.strip()]
     if not links:
-        links = ["[https://pclgroupcncmachine.com/](https://pclgroupcncmachine.com/)"]
+        links = ["https://pclgroupcncmachine.com/"]
     link = links[0]
     remaining_links = links[1:]
 
@@ -70,9 +70,9 @@ def run():
     ]
     full_prompt = "\n".join(prompt_lines)
     payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
-    url = f"[https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=](https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=){api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
     
-    # 3. 智能多轨重试拦截循环
+    # 3. 智能多轨重试拦截循环（使用极其稳定的 requests 库）
     max_retries = 5
     base_delay = 20  
     article_text = None
@@ -80,48 +80,47 @@ def run():
     for attempt in range(max_retries):
         try:
             print(f"Sending request to Gemini API (Attempt {attempt + 1}/{max_retries})...")
-            req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json"})
             
-            with urllib.request.urlopen(req) as response:
-                res_data = json.loads(response.read().decode("utf-8"))
-                raw_html = res_data["candidates"][0]["content"]["parts"][0]["text"].strip()
-                
-                # 【全网最稳健的静态 HTML 标签安全清洗机制】
-                # 用正规的方法剔除可能干扰的首尾 ```html 和 ```
-                raw_html = re.sub(r'^```html\s*', '', raw_html, flags=re.IGNORECASE)
-                raw_html = re.sub(r'^```[a-zA-Z]*\s*', '', raw_html)
-                raw_html = re.sub(r'\s*```$', '', raw_html)
-                raw_html = raw_html.strip()
-                
-                # 终极熔断关卡：确保这不是一个碎掉的 null 文本
-                if len(raw_html) > 500 and "html" in raw_html.lower() and raw_html.lower() != "null":
-                    article_text = raw_html
-                    break
-                else:
-                    print("⚠️ Content is too short or invalid 'null' text. Triggering backoff retry...")
-                    time.sleep(10)
-
-        except urllib.error.HTTPError as e:
-            if e.code == 429:
+            # 使用 requests.post 替代 urllib 并设置超时限制
+            response = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=60)
+            
+            if response.status_code == 429:
                 sleep_time = base_delay * (2 ** attempt)
                 print(f"Hit Rate Limit (429). Waiting {sleep_time}s...")
                 time.sleep(sleep_time)
-            else:
-                print(f"HTTP Error {e.code}, retrying...")
-                time.sleep(10)
-        except Exception as e:
-            print(f"Exception: {e}, retrying...")
-            time.sleep(10)
+                continue
+                
+            response.raise_for_status()
+            res_data = response.json()
+            raw_html = res_data["candidates"][0]["content"]["parts"][0]["text"].strip()
             
-    # 4. 放行写入与强路由绑定
+            # 净化可能带有的 Markdown 包装块
+            raw_html = re.sub(r'^```html\s*', '', raw_html, flags=re.IGNORECASE)
+            raw_html = re.sub(r'^```[a-zA-Z]*\s*', '', raw_html)
+            raw_html = re.sub(r'\s*```$', '', raw_html)
+            raw_html = raw_html.strip()
+            
+            # 终极拦截关卡，过滤任何残次品/空值/null
+            if len(raw_html) > 500 and "html" in raw_html.lower() and raw_html.lower() != "null":
+                article_text = raw_html
+                break
+            else:
+                print("⚠️ Received suspicious empty or 'null' HTML. Forcing retry...")
+                time.sleep(10)
+
+        except requests.exceptions.RequestException as e:
+            print(f"Request Exception on attempt {attempt+1}: {e}")
+            time.sleep(15)
+            
+    # 4. 验证并同步生成边缘重定向路由
     if article_text:
-        # 成功拿到真正的长文后，再推进队列
+        # 更新数据库序列
         with open("keywords.txt", "w", encoding="utf-8") as f:
             f.write("\n".join(remaining_keywords + [keyword]) + "\n")
         with open("backlinks.txt", "w", encoding="utf-8") as f:
             f.write("\n".join(remaining_links + [link]) + "\n")
 
-        # 生成干净的文件名
+        # 生成合规文件名
         os.makedirs("posts", exist_ok=True)
         clean_title = keyword.replace(" ", "-")
         clean_title = re.sub(r'[\\/*?:"<>|]', '', clean_title)
@@ -131,12 +130,12 @@ def run():
             out_f.write(article_text)
         print(f"🎉 Success! Real SEO article written into: {file_path}")
 
-        # 【核心强控路由】重新在根目录下无缝生成 _redirects 文件，实现不带后缀完美访问
+        # 在根目录下无缝生成重定向配置，完成无损伪静态挂载
         with open("_redirects", "w", encoding="utf-8") as red_f:
             red_f.write("/posts/:title /posts/:title.html 200\n")
-        print("📁 _redirects rule synchronized successfully.")
+        print("📁 _redirects rules synced successfully.")
     else:
-        print("❌ Fatal Error: Failed to fetch valid HTML.")
+        print("❌ Fatal Error: API kept failing. Terminating action to prevent blank file deploy.")
         exit(1)
 
 if __name__ == "__main__":
