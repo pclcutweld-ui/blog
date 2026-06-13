@@ -2,6 +2,7 @@ import os
 import json
 import urllib.request
 import time
+import re
 
 def run():
     # 1. 确保基础文件池存在
@@ -17,18 +18,22 @@ def run():
         with open("images.txt", "w", encoding="utf-8") as f:
             f.write("https://pclgroupcncmachine.com/wp-content/uploads/2024/12/tcp-h-beam-cutting-machine-scaled.jpg\n")
 
-    # 轮转提取关键词
+    # 精准安全提取并分离关键词
     with open("keywords.txt", "r", encoding="utf-8") as f:
         keywords = [line.strip() for line in f if line.strip()]
     if not keywords:
         print("Error: No keywords in keywords.txt")
         return
     keyword = keywords[0]
+    remaining_keywords = keywords[1:]  # 剥离出剩下的词
 
-    # 轮转提取外链
+    # 精准安全提取并分离外链
     with open("backlinks.txt", "r", encoding="utf-8") as f:
         links = [line.strip() for line in f if line.strip()]
-    link = links[0] if links else "https://pclgroupcncmachine.com/"
+    if not links:
+        links = ["https://pclgroupcncmachine.com/"]
+    link = links[0]
+    remaining_links = links[1:]  # 剥离出剩下的外链
 
     # 随机提取图片
     with open("images.txt", "r", encoding="utf-8") as f:
@@ -69,7 +74,7 @@ def run():
     
     # 3. 智能多轨抗压熔断循环
     max_retries = 5
-    base_delay = 20  # 延长基础等待时间，彻底绕开限制
+    base_delay = 20  
     article_text = None
     
     for attempt in range(max_retries):
@@ -90,10 +95,7 @@ def run():
                     raw_html = raw_html[:-3]
                 raw_html = raw_html.strip()
                 
-                # 【全方位地毯式安全熔断拦截】：
-                # 1. 检查文本是否等于 'null'
-                # 2. 检查字数是否少于 800 字（防空壳）
-                # 3. 检查是否包含最基本的 html 标签
+                # 全方位地毯式安全熔断拦截
                 if len(raw_html) > 800 and "html" in raw_html.lower() and raw_html.lower() != "null" and raw_html.strip() != "null":
                     article_text = raw_html
                     break
@@ -115,16 +117,17 @@ def run():
             
     # 4. 终极验证放行
     if article_text:
-        # 成功拿到了真正的长篇大作，才更新关键词队列顺序
+        # 【修复完美轮转逻辑】成功拿到了文章，才把当前的词和外链推到队伍最后面
         with open("keywords.txt", "w", encoding="utf-8") as f:
-            f.write("\n".join(keywords[1:] + [keyword]) + "\n")
-        if links:
-            with open("backlinks.txt", "w", encoding="utf-8") as f:
-                f.write("\n".join(links[1:] + [link]) + "\n")
+            f.write("\n".join(remaining_keywords + [keyword]) + "\n")
+        with open("backlinks.txt", "w", encoding="utf-8") as f:
+            f.write("\n".join(remaining_links + [link]) + "\n")
 
-        # 保存为纯正的静态文件
+        # 保存为静态文件
         os.makedirs("posts", exist_ok=True)
+        # SEO 增强：清洗关键词中可能存在的特殊符号，防止产生非法 Linux 文件名
         clean_title = keyword.replace(" ", "-")
+        clean_title = re.sub(r'[\\/*?:"<>|]', '', clean_title)
         file_path = f"posts/{clean_title}.html"
         
         with open(file_path, "w", encoding="utf-8") as out_f:
