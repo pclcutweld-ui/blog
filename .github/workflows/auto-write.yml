@@ -2,7 +2,7 @@ name: Daily GEO SEO Pure HTML Blogger (Ultimate Fully Featured)
 
 on:
   schedule:
-    - cron: '0 1 * * *' # 每天早上 9:00 全自动发射
+    - cron: '0 1 * * *' 
   workflow_dispatch: 
 
 jobs:
@@ -92,24 +92,23 @@ jobs:
           CLEAN_TITLE=$(echo "${{ steps.picker.outputs.keyword }}" | tr ' ' '-')
           echo "clean_title=$CLEAN_TITLE" >> $GITHUB_OUTPUT
 
-      - name: Force Cloudflare Edge Routing
+      - name: Push to Frontend Public Folder
         if: steps.picker.outputs.keyword != ''
         run: |
           git config --global user.name "PCL HTML Automatic Publisher"
           git config --global user.email "seo@pclgroupcncmachine.com"
           
-          # 1. 建立独立隔离文件夹 posts
-          mkdir -p posts
-          FILE_NAME="posts/${{ steps.gemini.outputs.clean_title }}.html"
-          mv temp_page.html $FILE_NAME
+          # 核心修复：写入前端受保护的静态资源目录 public/posts
+          mkdir -p public/posts
+          FILE_NAME="public/posts/${{ steps.gemini.outputs.clean_title }}.html"
+          mv temp_page.html "$FILE_NAME"
           
-          # 2. 【核心必杀招】使用 Cloudflare 200 强推语法：
-          # 强行规定：只要访问不带 .html 的美化路径，Cloudflare 在服务器底层直接把对应的 .html 静态页面强行吐给浏览器！
-          # 这样前端路由根本来不及拦截，页面就已经完美加载完了！
-          echo "/posts/:title /posts/:title.html 200" > _redirects
+          # 同时在根目录备份一份，双重保险
+          mkdir -p posts
+          cp "$FILE_NAME" "posts/${{ steps.gemini.outputs.clean_title }}.html"
           
           rm -f request.json prompt_template.txt
           
           git add .
-          git commit -m "site(geo): force cloudflare physical redirect to bypass spa router"
+          git commit -m "site(geo): deploy to public asset tree for seamless compilation"
           git push origin HEAD:${{ github.ref }}
