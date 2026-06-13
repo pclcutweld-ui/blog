@@ -1,4 +1,4 @@
-name: Daily GEO SEO Pure HTML Blogger (Ultimate Fully Featured)
+name: Daily GEO SEO Pure HTML Blogger (Ultimate Fixed Edition)
 
 on:
   schedule:
@@ -75,40 +75,47 @@ jobs:
           PROMPT_CONTENT=$(cat prompt_template.txt)
           jq -n --arg text "$PROMPT_CONTENT" '{"contents": [{"parts": [{"text": $text}]}]}' > request.json
 
-      - name: Call Gemini API
+      - name: Call Gemini API (Fixed Format)
         if: steps.picker.outputs.keyword != ''
         id: gemini
         env:
           GEMINI_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          RESPONSE=$(curl -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent" \
+          # 彻底修复之前导致 Malformed 的 URL 拼接问题
+          RESPONSE=$(curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}" \
             -H "Content-Type: application/json" \
-            -H "x-goog-api-key: $GEMINI_KEY" \
             -d @request.json)
           
           ARTICLE_TEXT=$(echo "$RESPONSE" | jq -r '.candidates[0].content.parts[0].text')
+          
+          if [ "$ARTICLE_TEXT" = "null" ] || [ -z "$ARTICLE_TEXT" ]; then
+            echo "Error: Gemini API response is empty or null!"
+            echo "$RESPONSE"
+            exit 1
+          fi
+          
           echo "$ARTICLE_TEXT" | sed 's/^```html//g' | sed 's/^```//g' | sed 's/```$//g' > temp_page.html
           
           CLEAN_TITLE=$(echo "${{ steps.picker.outputs.keyword }}" | tr ' ' '-')
           echo "clean_title=$CLEAN_TITLE" >> $GITHUB_OUTPUT
 
-      - name: Push to Frontend Public Folder
+      - name: Push Static File and Enforce Direct Route
         if: steps.picker.outputs.keyword != ''
         run: |
           git config --global user.name "PCL HTML Automatic Publisher"
           git config --global user.email "seo@pclgroupcncmachine.com"
           
-          # 核心修复：写入前端受保护的静态资源目录 public/posts
-          mkdir -p public/posts
-          FILE_NAME="public/posts/${{ steps.gemini.outputs.clean_title }}.html"
+          # 直接在根目录下创建静态文件夹，确保文件安全躺在仓库里
+          mkdir -p posts
+          FILE_NAME="posts/${{ steps.gemini.outputs.clean_title }}.html"
           mv temp_page.html "$FILE_NAME"
           
-          # 同时在根目录备份一份，双重保险
-          mkdir -p posts
-          cp "$FILE_NAME" "posts/${{ steps.gemini.outputs.clean_title }}.html"
+          # 【核心大招】因为你的构建目录是根目录，所以我们必须在根目录下写一个 _redirects 文件
+          # 强行命令 Cloudflare Pages：任何访问 /posts/xxx 的请求，必须去物理读取静态的 .html 文件，不允许传给 index.html！
+          echo "/posts/:title /posts/:title.html 200" > _redirects
           
           rm -f request.json prompt_template.txt
           
           git add .
-          git commit -m "site(geo): deploy to public asset tree for seamless compilation"
+          git commit -m "site(geo): bugfix api endpoint and inject edge-level bypass redirects"
           git push origin HEAD:${{ github.ref }}
