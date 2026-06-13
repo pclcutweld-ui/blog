@@ -64,7 +64,7 @@ def run():
         "[REQUIRED STRUCTURE]:",
         "1. Technical Evaluation (Use realistic numbers, structural tolerances, H-beam dimensions like 300x300mm or HEA/HEB standards).",
         "2. Machine Specification & Advantages (Break down real industrial components: cutting heads, heavy-duty chucks, rack and pinion systems).",
-        f"3. Exact Internal Hyperlink Implementation (Link Library): You MUST seamlessly embed the exact string \"{link}\" as an organic anchor text hyperlink in the middle of a paragraph. Do not create an isolated link.",
+        f"3. Exact Internal Hyperlink Implementation (Link Library): You MUST seamlessly embed the exact string \"{link}\" as an organic anchor text hyperlink in the middle of a paragraph.",
         f"4. Image Placement: Embed this exact image HTML element inside the body text organically: <img src=\"{img}\" alt=\"{keyword}\" style=\"width:100%;max-width:800px;border-radius:8px;margin:20px 0;\">",
         "5. Real-world FAQ Section: Provide 3 hard-core, realistic technical Q&As that global steel buyers ask during commercial procurement.",
         "6. Call to Action: Add contact methods at the bottom: WhatsApp: 8618660174681, email: pclmachinery@outlook.com.",
@@ -76,7 +76,7 @@ def run():
     full_prompt = "\n".join(prompt_lines)
     payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
 
-    # 3. 指定兼容新老密钥的最稳固网关及备用链路
+    # 3. 指定模型轮询链条
     models_to_try = [
         {"name": "gemini-2.5-flash", "api_version": "v1"},
         {"name": "gemini-1.5-flash", "api_version": "v1"},
@@ -93,57 +93,38 @@ def run():
             break
             
         print(f"\n🔄 正在请求模型: {model_name} (接口版本: {api_version})...")
-        
-        # 混合测试两种传参模式以应付谷歌网关的间歇性策略变动
-        # 尝试方案 A: Headers 头部鉴权
-        url_a = f"https://generativelanguage.googleapis.com/{api_version}/models/{model_name}:generateContent"
-        headers_a = {"Content-Type": "application/json", "x-goog-api-key": api_key}
+        url = f"https://generativelanguage.googleapis.com/{api_version}/models/{model_name}:generateContent?key={api_key}"
         
         try:
-            print(f"  [方案A] 发送请求，关键词: {keyword}...")
-            response = requests.post(url_a, json=payload, headers=headers_a, timeout=60)
-            if response.status_code == 200:
-                res_data = response.json()
-                raw_html = res_data["candidates"][0]["content"]["parts"][0]["text"].strip()
-                raw_html = re.sub(r'^```html\s*', '', raw_html, flags=re.IGNORECASE)
-                raw_html = re.sub(r'^```[a-zA-Z]*\s*', '', raw_html)
-                raw_html = re.sub(r'\s*```$', '', raw_html).strip()
-                if len(raw_html) > 500:
-                    article_text = raw_html
-                    print(f"  🎉 方案A成功打通！")
-                    break
-            else:
-                print(f"  [方案A] 状态码: {response.status_code}")
-        except Exception as e:
-            print(f"  [方案A] 失败: {e}")
+            print(f"  发送请求，关键词: {keyword}...")
+            response = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=60)
             
-        # 尝试方案 B: URL 参数鉴权备份
-        url_b = f"[https://generativelanguage.googleapis.com/](https://generativelanguage.googleapis.com/){api_version}/models/{model_name}:generateContent?key={api_key}"
-        try:
-            print(f"  [方案B] 启动备份路径尝试...")
-            response = requests.post(url_b, json=payload, headers={"Content-Type": "application/json"}, timeout=45)
             if response.status_code == 200:
                 res_data = response.json()
                 raw_html = res_data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                # 剥离可能存在的 markdown
                 raw_html = re.sub(r'^```html\s*', '', raw_html, flags=re.IGNORECASE)
                 raw_html = re.sub(r'^```[a-zA-Z]*\s*', '', raw_html)
                 raw_html = re.sub(r'\s*```$', '', raw_html).strip()
+                
                 if len(raw_html) > 500:
                     article_text = raw_html
-                    print(f"  🎉 方案B备份路径打通！")
+                    print(f"  🎉 文章由模型 [{model_name}] 顺利吐出！")
                     break
             else:
-                print(f"  [方案B] 状态码: {response.status_code}")
+                print(f"  ❌ 网关返回状态码: {response.status_code}，切向下一个备用模型...")
         except Exception as e:
-            print(f"  [方案B] 失败: {e}")
+            print(f"  ⚠️ 连接异常: {e}")
 
-    # 4. 全自动编译并同步刷新整个博客门户首页
+    # 4. 成功放行并全自动编译博客门户首页
     if article_text:
+        # 更新队列
         with open("keywords.txt", "w", encoding="utf-8") as f:
             f.write("\n".join(remaining_keywords + [keyword]) + "\n")
         with open("backlinks.txt", "w", encoding="utf-8") as f:
             f.write("\n".join(remaining_links + [link]) + "\n")
 
+        # 写入 HTML 文章
         os.makedirs("posts", exist_ok=True)
         clean_title = keyword.replace(" ", "-")
         clean_title = re.sub(r'[\\/*?:"<>|]', '', clean_title)
@@ -151,9 +132,9 @@ def run():
         
         with open(file_path, "w", encoding="utf-8") as out_f:
             out_f.write(article_text)
-        print(f"🎉 物理文章已成功存入: {file_path}")
+        print(f"🎉 物理文章已写入: {file_path}")
 
-        print("\n🔨 正在无损重构博客首页 (index.html)...")
+        # 扫描并编译列表首页
         posts_list = []
         for file in os.listdir("posts"):
             if file.endswith(".html"):
@@ -211,7 +192,7 @@ def run():
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PCL CNC Laser Machinery & Technology Blog</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="[https://cdn.tailwindcss.com](https://cdn.tailwindcss.com)"></script>
 </head>
 <body class="bg-gray-50 text-gray-800 min-h-screen flex flex-col">
     <nav class="bg-white border-b border-gray-200">
@@ -222,7 +203,7 @@ def run():
                 </div>
                 <div class="flex space-x-4">
                     <a href="/" class="text-gray-900 px-3 py-2 rounded-md text-sm font-medium border-b-2 border-blue-600">Blog Portal</a>
-                    <a href="https://pclgroupcncmachine.com/" target="_blank" class="text-gray-500 hover:text-gray-700 px-3 py-2 rounded-md text-sm font-medium">Official Website</a>
+                    <a href="[https://pclgroupcncmachine.com/](https://pclgroupcncmachine.com/)" target="_blank" class="text-gray-500 hover:text-gray-700 px-3 py-2 rounded-md text-sm font-medium">Official Website</a>
                 </div>
             </div>
         </div>
@@ -253,13 +234,13 @@ def run():
 
         with open("index.html", "w", encoding="utf-8") as index_f:
             index_f.write(index_template)
-        print("🎉 博客门户首页编译成功！")
+        print("🎉 博客门户首页 index.html 编译成功！")
 
         with open("_redirects", "w", encoding="utf-8") as red_f:
             red_f.write("/posts/:title /posts/:title.html 200\n")
         print("📁 伪静态路由更新完毕。")
     else:
-        print("\n❌ 严重错误: 所有方案及兼容路径均无法使用当前 API 密钥通过谷歌网关验证。")
+        print("\n❌ 严重错误: 所有模型均未能通过当前 API 密钥验证。")
         exit(1)
 
 if __name__ == "__main__":
