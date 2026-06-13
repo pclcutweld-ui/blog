@@ -67,8 +67,7 @@ def run():
 [OUTPUT FORMAT]:
 Return the entire response as a single, valid, self-contained HTML file (including <html>, <head> with a catchy <title>, <style> for a premium clean layout, and <body>). 
 At the very bottom of the HTML document, just before the closing </body> tag, you MUST inject a perfectly structured <script type="application/ld+json"> containing a dual JSON-LD Schema that wraps BOTH Article and FAQPage into a single graph.
-Output ONLY the raw HTML code. Do NOT enclose the response in markdown blocks like ```html ... 
-```."""
+Output ONLY the raw HTML code. Do NOT enclose the response in markdown blocks like ```html ... ```."""
 
     # 4. 发起 HTTP 请求
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
@@ -89,17 +88,17 @@ Output ONLY the raw HTML code. Do NOT enclose the response in markdown blocks li
             res_data = json.loads(response.read().decode("utf-8"))
             article_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
             
-            # 清理 Markdown 包裹
+            # 【修复点】使用完美的字符串修剪，彻底干掉首尾可能包裹的 Markdown 代码标记
+            article_text = article_text.strip()
             if article_text.startswith("```html"):
                 article_text = article_text[7:]
-            elif article_text.startswith("
-```"):
+            elif article_text.startswith("```"):
                 article_text = article_text[3:]
             if article_text.endswith("```"):
                 article_text = article_text[:-3]
             article_text = article_text.strip()
 
-            # 5. 保存并导出
+            # 5. 保存并导出到 posts 目录下
             os.makedirs("posts", exist_ok=True)
             clean_title = keyword.replace(" ", "-")
             file_path = f"posts/{clean_title}.html"
@@ -108,7 +107,7 @@ Output ONLY the raw HTML code. Do NOT enclose the response in markdown blocks li
                 out_f.write(article_text)
             print(f"Successfully generated: {file_path}")
 
-            # 写入边缘重定向规则
+            # 写入边缘重定向规则，确保能正常读取不带 .html 后缀的纯静态页面
             with open("_redirects", "w", encoding="utf-8") as red_f:
                 red_f.write("/posts/:title /posts/:title.html 200\n")
 
