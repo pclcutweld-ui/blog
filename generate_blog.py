@@ -67,9 +67,9 @@ def run():
     payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
     
-    # 3. 核心抗压逻辑（带智能指数退避重试）
+    # 3. 智能多轨抗压熔断循环
     max_retries = 5
-    base_delay = 15  
+    base_delay = 20  # 延长基础等待时间，彻底绕开限制
     article_text = None
     
     for attempt in range(max_retries):
@@ -90,13 +90,16 @@ def run():
                     raw_html = raw_html[:-3]
                 raw_html = raw_html.strip()
                 
-                # 【超级熔断保护】：如果返回的数据太短，或者直接包含了空值或错误字符，绝不录用！
-                if len(raw_html) > 200 and "html" in raw_html.lower() and raw_html.lower() != "null":
+                # 【全方位地毯式安全熔断拦截】：
+                # 1. 检查文本是否等于 'null'
+                # 2. 检查字数是否少于 800 字（防空壳）
+                # 3. 检查是否包含最基本的 html 标签
+                if len(raw_html) > 800 and "html" in raw_html.lower() and raw_html.lower() != "null" and raw_html.strip() != "null":
                     article_text = raw_html
                     break
                 else:
-                    print("Warning: Received suspicious or empty content from API. Retrying...")
-                    time.sleep(5)
+                    print("⚠️ Detect invalid empty/null/short response from API. Force retry...")
+                    time.sleep(10)
 
         except urllib.error.HTTPError as e:
             if e.code == 429:
@@ -104,31 +107,31 @@ def run():
                 print(f"Hit Rate Limit (429). Waiting {sleep_time}s...")
                 time.sleep(sleep_time)
             else:
-                print(f"HTTP Error: {e.code}")
-                time.sleep(5)
+                print(f"HTTP Error {e.code}, retrying...")
+                time.sleep(10)
         except Exception as e:
-            print(f"Request Exception: {e}")
-            time.sleep(5)
+            print(f"Exception: {e}, retrying...")
+            time.sleep(10)
             
-    # 4. 只有成功拿到完美 HTML 时，才执行写入和“轮转数据池”操作，确保数据安全
+    # 4. 终极验证放行
     if article_text:
-        # 更新队列（成功了才把当前使用的词和链接挪到末尾）
+        # 成功拿到了真正的长篇大作，才更新关键词队列顺序
         with open("keywords.txt", "w", encoding="utf-8") as f:
             f.write("\n".join(keywords[1:] + [keyword]) + "\n")
         if links:
             with open("backlinks.txt", "w", encoding="utf-8") as f:
                 f.write("\n".join(links[1:] + [link]) + "\n")
 
-        # 保存文章
+        # 保存为纯正的静态文件
         os.makedirs("posts", exist_ok=True)
         clean_title = keyword.replace(" ", "-")
         file_path = f"posts/{clean_title}.html"
         
         with open(file_path, "w", encoding="utf-8") as out_f:
             out_f.write(article_text)
-        print(f"🎉 Successfully generated static page: {file_path}")
+        print(f"🎉 Success! Real SEO article written into: {file_path}")
     else:
-        print("❌ Error: Failed to fetch valid HTML from Gemini after all retries. Blocking file write to prevent corruption.")
+        print("❌ Fatal Error: API kept returning 'null' or empty texts after all retries. Blocked file push to protect site.")
         exit(1)
 
 if __name__ == "__main__":
