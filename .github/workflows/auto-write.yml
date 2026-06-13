@@ -1,22 +1,37 @@
-- name: Call Gemini API (Pure Code Edition)
-        if: steps.picker.outputs.keyword != ''
-        id: gemini
+name: Daily GEO SEO Pure HTML Blogger (Python Engine)
+
+on:
+  schedule:
+    - cron: '0 1 * * *' 
+  workflow_dispatch: 
+
+jobs:
+  auto-html-blog:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Run Python Generator Engine
         env:
-          GEMINI_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python generate_blog.py
+
+      - name: Push Static File and Enforce Direct Route
         run: |
-          RESPONSE=$(curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}" \
-            -H "Content-Type: application/json" \
-            -d @request.json)
-          
-          ARTICLE_TEXT=$(echo "$RESPONSE" | jq -r '.candidates[0].content.parts[0].text')
-          
-          if [ "$ARTICLE_TEXT" = "null" ] || [ -z "$ARTICLE_TEXT" ]; then
-            echo "Error: Gemini API response is empty!"
-            echo "$RESPONSE"
-            exit 1
+          git config --global user.name "PCL HTML Automatic Publisher"
+          git config --global user.email "seo@pclgroupcncmachine.com"
+          git add .
+          if ! git diff --staged --quiet; then
+            git commit -m "site(geo): deploy pure static html via python engine"
+            git push origin HEAD:${{ github.ref }}
+          else
+            echo "No changes to commit."
           fi
-          
-          echo "$ARTICLE_TEXT" | sed 's/^```html//g' | sed 's/^```//g' | sed 's/```$//g' > temp_page.html
-          
-          CLEAN_TITLE=$(echo "${{ steps.picker.outputs.keyword }}" | tr ' ' '-')
-          echo "clean_title=$CLEAN_TITLE" >> $GITHUB_OUTPUT
