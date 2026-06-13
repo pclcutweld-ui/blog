@@ -12,30 +12,30 @@ def run():
             
     if not os.path.exists("backlinks.txt"):
         with open("backlinks.txt", "w", encoding="utf-8") as f:
-            f.write("https://pclgroupcncmachine.com/structural-steel-laser-cutting/\nhttps://pclgroupcncmachine.com/\n")
+            f.write("[https://pclgroupcncmachine.com/structural-steel-laser-cutting/](https://pclgroupcncmachine.com/structural-steel-laser-cutting/)\n[https://pclgroupcncmachine.com/](https://pclgroupcncmachine.com/)\n")
             
     if not os.path.exists("images.txt"):
         with open("images.txt", "w", encoding="utf-8") as f:
-            f.write("https://pclgroupcncmachine.com/wp-content/uploads/2024/12/tcp-h-beam-cutting-machine-scaled.jpg\n")
+            f.write("[https://pclgroupcncmachine.com/wp-content/uploads/2024/12/tcp-h-beam-cutting-machine-scaled.jpg](https://pclgroupcncmachine.com/wp-content/uploads/2024/12/tcp-h-beam-cutting-machine-scaled.jpg)\n")
 
-    # 精准安全提取并分离关键词
+    # 精准轮转提取关键词
     with open("keywords.txt", "r", encoding="utf-8") as f:
         keywords = [line.strip() for line in f if line.strip()]
     if not keywords:
         print("Error: No keywords in keywords.txt")
         return
     keyword = keywords[0]
-    remaining_keywords = keywords[1:]  # 剥离出剩下的词
+    remaining_keywords = keywords[1:]
 
-    # 精准安全提取并分离外链
+    # 精准轮转提取外链
     with open("backlinks.txt", "r", encoding="utf-8") as f:
         links = [line.strip() for line in f if line.strip()]
     if not links:
-        links = ["https://pclgroupcncmachine.com/"]
+        links = ["[https://pclgroupcncmachine.com/](https://pclgroupcncmachine.com/)"]
     link = links[0]
-    remaining_links = links[1:]  # 剥离出剩下的外链
+    remaining_links = links[1:]
 
-    # 随机提取图片
+    # 提取图片
     with open("images.txt", "r", encoding="utf-8") as f:
         imgs = [line.strip() for line in f if line.strip()]
     img = imgs[0] if imgs else ""
@@ -46,7 +46,7 @@ def run():
         print("Error: GEMINI_API_KEY variable is missing!")
         return
 
-    # 2. 构造干净的纯文本 Prompt
+    # 2. 构造 Prompt
     prompt_lines = [
         f"You are an elite B2B machinery sales director and hands-on welding engineer. Write a highly professional, technically precise industrial whitepaper for the keyword \"{keyword}\".",
         "",
@@ -70,9 +70,9 @@ def run():
     ]
     full_prompt = "\n".join(prompt_lines)
     payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+    url = f"[https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=](https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=){api_key}"
     
-    # 3. 智能多轨抗压熔断循环
+    # 3. 智能多轨重试拦截循环
     max_retries = 5
     base_delay = 20  
     article_text = None
@@ -86,21 +86,19 @@ def run():
                 res_data = json.loads(response.read().decode("utf-8"))
                 raw_html = res_data["candidates"][0]["content"]["parts"][0]["text"].strip()
                 
-                # 清理首尾 Markdown 标记块
-                if raw_html.startswith("```html"):
-                    raw_html = raw_html[7:]
-                elif raw_html.startswith("```"):
-                    raw_html = raw_html[3:]
-                if raw_html.endswith("```"):
-                    raw_html = raw_html[:-3]
+                # 【全网最稳健的静态 HTML 标签安全清洗机制】
+                # 用正规的方法剔除可能干扰的首尾 ```html 和 ```
+                raw_html = re.sub(r'^```html\s*', '', raw_html, flags=re.IGNORECASE)
+                raw_html = re.sub(r'^```[a-zA-Z]*\s*', '', raw_html)
+                raw_html = re.sub(r'\s*```$', '', raw_html)
                 raw_html = raw_html.strip()
                 
-                # 全方位地毯式安全熔断拦截
-                if len(raw_html) > 800 and "html" in raw_html.lower() and raw_html.lower() != "null" and raw_html.strip() != "null":
+                # 终极熔断关卡：确保这不是一个碎掉的 null 文本
+                if len(raw_html) > 500 and "html" in raw_html.lower() and raw_html.lower() != "null":
                     article_text = raw_html
                     break
                 else:
-                    print("⚠️ Detect invalid empty/null/short response from API. Force retry...")
+                    print("⚠️ Content is too short or invalid 'null' text. Triggering backoff retry...")
                     time.sleep(10)
 
         except urllib.error.HTTPError as e:
@@ -115,17 +113,16 @@ def run():
             print(f"Exception: {e}, retrying...")
             time.sleep(10)
             
-    # 4. 终极验证放行
+    # 4. 放行写入与强路由绑定
     if article_text:
-        # 【修复完美轮转逻辑】成功拿到了文章，才把当前的词和外链推到队伍最后面
+        # 成功拿到真正的长文后，再推进队列
         with open("keywords.txt", "w", encoding="utf-8") as f:
             f.write("\n".join(remaining_keywords + [keyword]) + "\n")
         with open("backlinks.txt", "w", encoding="utf-8") as f:
             f.write("\n".join(remaining_links + [link]) + "\n")
 
-        # 保存为静态文件
+        # 生成干净的文件名
         os.makedirs("posts", exist_ok=True)
-        # SEO 增强：清洗关键词中可能存在的特殊符号，防止产生非法 Linux 文件名
         clean_title = keyword.replace(" ", "-")
         clean_title = re.sub(r'[\\/*?:"<>|]', '', clean_title)
         file_path = f"posts/{clean_title}.html"
@@ -133,8 +130,13 @@ def run():
         with open(file_path, "w", encoding="utf-8") as out_f:
             out_f.write(article_text)
         print(f"🎉 Success! Real SEO article written into: {file_path}")
+
+        # 【核心强控路由】重新在根目录下无缝生成 _redirects 文件，实现不带后缀完美访问
+        with open("_redirects", "w", encoding="utf-8") as red_f:
+            red_f.write("/posts/:title /posts/:title.html 200\n")
+        print("📁 _redirects rule synchronized successfully.")
     else:
-        print("❌ Fatal Error: API kept returning 'null' or empty texts after all retries. Blocked file push to protect site.")
+        print("❌ Fatal Error: Failed to fetch valid HTML.")
         exit(1)
 
 if __name__ == "__main__":
