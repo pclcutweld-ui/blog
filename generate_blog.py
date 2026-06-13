@@ -1,6 +1,7 @@
 import os
 import json
 import urllib.request
+import time
 
 def run():
     # 1. 确保基础文件池存在
@@ -23,16 +24,11 @@ def run():
         print("Error: No keywords in keywords.txt")
         return
     keyword = keywords[0]
-    with open("keywords.txt", "w", encoding="utf-8") as f:
-        f.write("\n".join(keywords[1:] + [keyword]) + "\n")
 
     # 轮转提取外链
     with open("backlinks.txt", "r", encoding="utf-8") as f:
         links = [line.strip() for line in f if line.strip()]
     link = links[0] if links else "https://pclgroupcncmachine.com/"
-    if links:
-        with open("backlinks.txt", "w", encoding="utf-8") as f:
-            f.write("\n".join(links[1:] + [link]) + "\n")
 
     # 随机提取图片
     with open("images.txt", "r", encoding="utf-8") as f:
@@ -42,10 +38,10 @@ def run():
     # 获取系统密钥
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        print("Error: GEMINI_API_KEY environment variable is missing!")
+        print("Error: GEMINI_API_KEY variable is missing!")
         return
 
-    # 2. 构造干净的纯文本 Prompt（避免原生多行字符串里的非法隐形字符干扰 JSON）
+    # 2. 构造干净的纯文本 Prompt
     prompt_lines = [
         f"You are an elite B2B machinery sales director and hands-on welding engineer. Write a highly professional, technically precise industrial whitepaper for the keyword \"{keyword}\".",
         "",
@@ -68,60 +64,71 @@ def run():
         "Output ONLY the raw HTML code. Do NOT enclose the response in markdown blocks like ```html ... ```."
     ]
     full_prompt = "\n".join(prompt_lines)
-
-    # 3. 严格遵循 Google Gemini 最新 API 的 JSON 标准结构进行包装（使用 json.dumps 完美逃逸所有非法字符）
-    payload = {
-        "contents": [
-            {
-                "parts": [
-                    {
-                        "text": full_prompt
-                    }
-                ]
-            }
-        ]
-    }
-
+    payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
     
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"}
-    )
-
-    try:
-        print(f"Sending request to Gemini API for keyword: {keyword}...")
-        with urllib.request.urlopen(req) as response:
-            res_data = json.loads(response.read().decode("utf-8"))
-            article_text = res_data["candidates"][0]["content"]["parts"][0]["text"].strip()
+    # 3. 核心抗压逻辑（带智能指数退避重试）
+    max_retries = 5
+    base_delay = 15  
+    article_text = None
+    
+    for attempt in range(max_retries):
+        try:
+            print(f"Sending request to Gemini API (Attempt {attempt + 1}/{max_retries})...")
+            req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json"})
             
-            # 清理可能存在的首尾 Markdown 包裹块
-            if article_text.startswith("```html"):
-                article_text = article_text[7:]
-            elif article_text.startswith("```"):
-                article_text = article_text[3:]
-            if article_text.endswith("```"):
-                article_text = article_text[:-3]
-            article_text = article_text.strip()
-
-            # 4. 安全推送到静态 posts 目录下
-            os.makedirs("posts", exist_ok=True)
-            clean_title = keyword.replace(" ", "-")
-            file_path = f"posts/{clean_title}.html"
-            
-            with open(file_path, "w", encoding="utf-8") as out_f:
-                out_f.write(article_text)
-            print(f"Successfully generated static page: {file_path}")
-
-            # 写入边缘防拦截规则
-            with open("_redirects", "w", encoding="utf-8") as red_f:
-                red_f.write("/posts/:title /posts/:title.html 200\n")
+            with urllib.request.urlopen(req) as response:
+                res_data = json.loads(response.read().decode("utf-8"))
+                raw_html = res_data["candidates"][0]["content"]["parts"][0]["text"].strip()
                 
-    except Exception as e:
-        print(f"Failed to execute API call: {e}")
-        if 'res_data' in locals():
-            print("Response Details:", json.dumps(res_data))
+                # 清理首尾 Markdown 标记块
+                if raw_html.startswith("```html"):
+                    raw_html = raw_html[7:]
+                elif raw_html.startswith("```"):
+                    raw_html = raw_html[3:]
+                if raw_html.endswith("```"):
+                    raw_html = raw_html[:-3]
+                raw_html = raw_html.strip()
+                
+                # 【超级熔断保护】：如果返回的数据太短，或者直接包含了空值或错误字符，绝不录用！
+                if len(raw_html) > 200 and "html" in raw_html.lower() and raw_html.lower() != "null":
+                    article_text = raw_html
+                    break
+                else:
+                    print("Warning: Received suspicious or empty content from API. Retrying...")
+                    time.sleep(5)
+
+        except urllib.error.HTTPError as e:
+            if e.code == 429:
+                sleep_time = base_delay * (2 ** attempt)
+                print(f"Hit Rate Limit (429). Waiting {sleep_time}s...")
+                time.sleep(sleep_time)
+            else:
+                print(f"HTTP Error: {e.code}")
+                time.sleep(5)
+        except Exception as e:
+            print(f"Request Exception: {e}")
+            time.sleep(5)
+            
+    # 4. 只有成功拿到完美 HTML 时，才执行写入和“轮转数据池”操作，确保数据安全
+    if article_text:
+        # 更新队列（成功了才把当前使用的词和链接挪到末尾）
+        with open("keywords.txt", "w", encoding="utf-8") as f:
+            f.write("\n".join(keywords[1:] + [keyword]) + "\n")
+        if links:
+            with open("backlinks.txt", "w", encoding="utf-8") as f:
+                f.write("\n".join(links[1:] + [link]) + "\n")
+
+        # 保存文章
+        os.makedirs("posts", exist_ok=True)
+        clean_title = keyword.replace(" ", "-")
+        file_path = f"posts/{clean_title}.html"
+        
+        with open(file_path, "w", encoding="utf-8") as out_f:
+            out_f.write(article_text)
+        print(f"🎉 Successfully generated static page: {file_path}")
+    else:
+        print("❌ Error: Failed to fetch valid HTML from Gemini after all retries. Blocking file write to prevent corruption.")
         exit(1)
 
 if __name__ == "__main__":
