@@ -40,11 +40,17 @@ def run():
         imgs = [line.strip() for line in f if line.strip()]
     img = imgs[0] if imgs else ""
 
-    # 安全提取 API 密钥
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
+    # 安全提取并严格清洗 API 密钥（防止用户误粘贴引号、空格、换行或反斜杠）
+    raw_api_key = os.environ.get("GEMINI_API_KEY")
+    if not raw_api_key:
         print("Error: GEMINI_API_KEY environment variable is missing!")
         return
+        
+    api_key = raw_api_key.strip().strip("'").strip('"').replace("\\", "")
+    
+    # 打印安全脱敏后的密钥信息，方便在日志中比对排查
+    masked_key = api_key[:4] + "..." + api_key[-4:] if len(api_key) > 8 else "INVALID_OR_EMPTY"
+    print(f"Loaded API Key: {masked_key} (Cleaned Length: {len(api_key)})")
 
     # 2. 构造干净的高级 SEO 营销提示词（严格清洗，去除所有 AI 味）
     prompt_lines = [
@@ -71,13 +77,11 @@ def run():
     full_prompt = "\n".join(prompt_lines)
     payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
 
-    # 3. 智能多模型与多端点交叉路由链 (添加并优先运行全新的 gemini-3-flash-preview)
+    # 3. 智能多模型与多端点交叉路由链 (移除受限的未发布预览版，优先采用稳定和广泛授权的模型)
     models_to_try = [
-        {"name": "gemini-3-flash-preview", "api_version": "v1beta"},
-        {"name": "gemini-3-flash-preview", "api_version": "v1"},
-        {"name": "gemini-2.5-flash", "api_version": "v1"},
+        {"name": "gemini-2.0-flash", "api_version": "v1"},
+        {"name": "gemini-2.0-flash", "api_version": "v1beta"},
         {"name": "gemini-1.5-flash", "api_version": "v1"},
-        {"name": "gemini-2.5-flash", "api_version": "v1beta"},
         {"name": "gemini-1.5-flash", "api_version": "v1beta"},
         {"name": "gemini-1.5-pro", "api_version": "v1"},
         {"name": "gemini-1.5-pro", "api_version": "v1beta"}
