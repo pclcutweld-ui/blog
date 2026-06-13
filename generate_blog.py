@@ -70,7 +70,7 @@ def run():
     ]
     full_prompt = "\n".join(prompt_lines)
     payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
     
     # 3. 智能多轨重试拦截循环（使用极其稳定的 requests 库）
     max_retries = 5
