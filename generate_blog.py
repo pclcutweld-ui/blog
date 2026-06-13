@@ -5,7 +5,7 @@ import re
 import requests
 
 def run():
-    # 1. 确保基础文件池存在
+    # 1. 确保数据池文件和基础目录结构完备
     if not os.path.exists("keywords.txt"):
         with open("keywords.txt", "w", encoding="utf-8") as f:
             f.write("12kW H-Beam 3D laser cutting machine price\n")
@@ -18,7 +18,7 @@ def run():
         with open("images.txt", "w", encoding="utf-8") as f:
             f.write("https://pclgroupcncmachine.com/wp-content/uploads/2024/12/tcp-h-beam-cutting-machine-scaled.jpg\n")
 
-    # 精准轮转提取关键词
+    # 精准轮转提取当前行对应的关键词
     with open("keywords.txt", "r", encoding="utf-8") as f:
         keywords = [line.strip() for line in f if line.strip()]
     if not keywords:
@@ -27,7 +27,7 @@ def run():
     keyword = keywords[0]
     remaining_keywords = keywords[1:]
 
-    # 精准轮转提取外链
+    # 精准轮转提取当前行对应的超链接
     with open("backlinks.txt", "r", encoding="utf-8") as f:
         links = [line.strip() for line in f if line.strip()]
     if not links:
@@ -35,18 +35,18 @@ def run():
     link = links[0]
     remaining_links = links[1:]
 
-    # 提取图片
+    # 提取大图
     with open("images.txt", "r", encoding="utf-8") as f:
         imgs = [line.strip() for line in f if line.strip()]
     img = imgs[0] if imgs else ""
 
-    # 获取系统密钥
+    # 安全提取 API 密钥
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        print("Error: GEMINI_API_KEY variable is missing!")
+        print("Error: GEMINI_API_KEY environment variable is missing!")
         return
 
-    # 2. 构造 Prompt
+    # 2. 构造干净的高级 SEO 营销提示词（严格清洗，去除所有 AI 味）
     prompt_lines = [
         f"You are an elite B2B machinery sales director and hands-on welding engineer. Write a highly professional, technically precise industrial whitepaper for the keyword \"{keyword}\".",
         "",
@@ -70,51 +70,73 @@ def run():
     ]
     full_prompt = "\n".join(prompt_lines)
     payload = {"contents": [{"parts": [{"text": full_prompt}]}]}
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key={api_key}"
-    
-    # 3. 智能多轨重试拦截循环（使用极其稳定的 requests 库）
-    max_retries = 5
-    base_delay = 20  
-    article_text = None
-    
-    for attempt in range(max_retries):
-        try:
-            print(f"Sending request to Gemini API (Attempt {attempt + 1}/{max_retries})...")
-            
-            # 使用 requests.post 替代 urllib 并设置超时限制
-            response = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=60)
-            
-            if response.status_code == 429:
-                sleep_time = base_delay * (2 ** attempt)
-                print(f"Hit Rate Limit (429). Waiting {sleep_time}s...")
-                time.sleep(sleep_time)
-                continue
-                
-            response.raise_for_status()
-            res_data = response.json()
-            raw_html = res_data["candidates"][0]["content"]["parts"][0]["text"].strip()
-            
-            # 净化可能带有的 Markdown 包装块
-            raw_html = re.sub(r'^```html\s*', '', raw_html, flags=re.IGNORECASE)
-            raw_html = re.sub(r'^```[a-zA-Z]*\s*', '', raw_html)
-            raw_html = re.sub(r'\s*```$', '', raw_html)
-            raw_html = raw_html.strip()
-            
-            # 终极拦截关卡，过滤任何残次品/空值/null
-            if len(raw_html) > 500 and "html" in raw_html.lower() and raw_html.lower() != "null":
-                article_text = raw_html
-                break
-            else:
-                print("⚠️ Received suspicious empty or 'null' HTML. Forcing retry...")
-                time.sleep(10)
 
-        except requests.exceptions.RequestException as e:
-            print(f"Request Exception on attempt {attempt+1}: {e}")
-            time.sleep(15)
+    # 3. 智能多模型备用链（全部修改为 100% 具备公开授权的稳定版模型）
+    models_to_try = [
+        "gemini-2.5-flash",
+        "gemini-1.5-flash",
+        "gemini-1.5-pro"
+    ]
+    
+    article_text = None
+    successful_model = None
+    
+    # 遍历尝试可用模型
+    for model_name in models_to_try:
+        if article_text:
+            break
             
-    # 4. 验证并同步生成边缘重定向路由
+        print(f"\n🔄 Trying Model: {model_name}...")
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+        
+        # 每个模型最多重试 3 次，防止遭遇高频拥堵限制
+        max_retries = 3
+        base_delay = 15
+        
+        for attempt in range(max_retries):
+            try:
+                print(f"  Sending request (Attempt {attempt + 1}/{max_retries}) for keyword: {keyword}...")
+                response = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=60)
+                
+                # 处理 429 频率限制异常
+                if response.status_code == 429:
+                    sleep_time = base_delay * (2 ** attempt)
+                    print(f"  ⚠️ Hit Rate Limit (429) on {model_name}. Waiting {sleep_time}s...")
+                    time.sleep(sleep_time)
+                    continue
+                
+                # 处理 400, 403 等模型无权限或不可用异常，直接熔断换下一代模型
+                if response.status_code in [400, 403, 404]:
+                    print(f"  ❌ Model {model_name} returned status {response.status_code} (Unauthorized or unsupported). Switching to next model...")
+                    break
+                    
+                response.raise_for_status()
+                res_data = response.json()
+                raw_html = res_data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                
+                # 安全剥离 Markdown HTML 标记
+                raw_html = re.sub(r'^```html\s*', '', raw_html, flags=re.IGNORECASE)
+                raw_html = re.sub(r'^```[a-zA-Z]*\s*', '', raw_html)
+                raw_html = re.sub(r'\s*```$', '', raw_html)
+                raw_html = raw_html.strip()
+                
+                # 质量拦截把关
+                if len(raw_html) > 500 and "html" in raw_html.lower() and raw_html.lower() != "null":
+                    article_text = raw_html
+                    successful_model = model_name
+                    print(f"  🎉 Successfully generated via {model_name}!")
+                    break
+                else:
+                    print("  ⚠️ Suspicious short/empty text returned. Retrying inside current model...")
+                    time.sleep(5)
+                    
+            except Exception as e:
+                print(f"  ⚠️ Error during {model_name} call: {e}")
+                time.sleep(5)
+
+    # 4. 成功放行并同步生成重定向路由
     if article_text:
-        # 更新数据库序列
+        # 更新队列序列
         with open("keywords.txt", "w", encoding="utf-8") as f:
             f.write("\n".join(remaining_keywords + [keyword]) + "\n")
         with open("backlinks.txt", "w", encoding="utf-8") as f:
@@ -128,14 +150,14 @@ def run():
         
         with open(file_path, "w", encoding="utf-8") as out_f:
             out_f.write(article_text)
-        print(f"🎉 Success! Real SEO article written into: {file_path}")
+        print(f"\n🎉 Success! Real SEO article written into: {file_path} (Generated by {successful_model})")
 
-        # 在根目录下无缝生成重定向配置，完成无损伪静态挂载
+        # 同步生成并修复 _redirects 边缘伪静态配置文件
         with open("_redirects", "w", encoding="utf-8") as red_f:
             red_f.write("/posts/:title /posts/:title.html 200\n")
-        print("📁 _redirects rules synced successfully.")
+        print("📁 _redirects rule synced successfully.")
     else:
-        print("❌ Fatal Error: API kept failing. Terminating action to prevent blank file deploy.")
+        print("\n❌ Fatal Error: All models in the fallback chain failed to generate valid content.")
         exit(1)
 
 if __name__ == "__main__":
