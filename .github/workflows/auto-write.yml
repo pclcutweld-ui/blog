@@ -3,7 +3,7 @@ name: Daily GEO SEO Pure HTML Blogger (Ultimate Fully Featured)
 on:
   schedule:
     - cron: '0 1 * * *' # 每天早上 9:00 全自动发射
-  workflow_dispatch: # 支持手动点击测试
+  workflow_dispatch: 
 
 jobs:
   auto-html-blog:
@@ -12,7 +12,6 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          # 核心修复：强制检出当前主仓库，并允许回写
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Initialize Database Pool
@@ -93,19 +92,22 @@ jobs:
           CLEAN_TITLE=$(echo "${{ steps.picker.outputs.keyword }}" | tr ' ' '-')
           echo "clean_title=$CLEAN_TITLE" >> $GITHUB_OUTPUT
 
-      - name: Push Directly to This Local Repository
+      - name: Push to Safe Isolation Folder
         if: steps.picker.outputs.keyword != ''
         run: |
           git config --global user.name "PCL HTML Automatic Publisher"
           git config --global user.email "seo@pclgroupcncmachine.com"
           
-          # 直接在当前主仓库下建立 blog 目录，让 Cloudflare Pages 能够精准抓取到
-          mkdir -p blog
-          FILE_NAME="blog/${{ steps.gemini.outputs.clean_title }}.html"
+          # 1. 建立独立隔离文件夹 posts，防止和前端首页冲突
+          mkdir -p posts
+          FILE_NAME="posts/${{ steps.gemini.outputs.clean_title }}.html"
           mv temp_page.html $FILE_NAME
+          
+          # 2. 核心大招：动态生成反拦截重定向规则，强行命令 Cloudflare 优先渲染静态 HTML 页面
+          echo "/posts/* /posts/:splat 200" > _redirects
           
           rm -f request.json prompt_template.txt
           
           git add .
-          git commit -m "site(geo): deployed html for ${{ steps.picker.outputs.keyword }} to main repo"
+          git commit -m "site(geo): bypass spa router logic for ${{ steps.picker.outputs.keyword }}"
           git push origin HEAD:${{ github.ref }}
