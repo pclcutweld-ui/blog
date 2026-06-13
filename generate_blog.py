@@ -253,3 +253,40 @@ def run():
 
     <header class="bg-gradient-to-r from-blue-700 to-indigo-800 py-16 text-center text-white">
         <div class="max-w-4xl mx-auto px-4">
+            <h1 class="text-4xl sm:text-5xl font-black tracking-tight mb-4">Structural Steel Laser Technology</h1>
+            <p class="text-lg sm:text-xl text-blue-100 font-light max-w-2xl mx-auto">
+                Hardcore engineering whitepapers, procurement Q&As, and ROI analysis written directly by machinery sales directors and welding engineers.
+            </p>
+        </div>
+    </header>
+
+    <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {blog_cards_html}
+        </div>
+    </main>
+
+    <footer class="bg-white border-t border-gray-200 py-8 text-center text-sm text-gray-500 mt-auto">
+        <div class="max-w-7xl mx-auto px-4">
+            <p>© {datetime.now().year} PCL CNC Group. All rights reserved.</p>
+            <p class="mt-2 text-xs">WhatsApp: 8618660174681 | Email: <a href="mailto:pclmachinery@outlook.com" class="text-blue-500 hover:underline">pclmachinery@outlook.com</a></p>
+        </div>
+    </footer>
+
+</body>
+</html>
+"""
+        with open("index.html", "w", encoding="utf-8") as index_f:
+            index_f.write(index_template)
+        print("🎉 博客首页编译成功 (index.html 已完全刷新)")
+
+        # 同步生成 Cloudflare 重定向规则
+        with open("_redirects", "w", encoding="utf-8") as red_f:
+            red_f.write("/posts/:title /posts/:title.html 200\n")
+        print("📁 边缘伪静态重定向规则 _redirects 更新完毕。")
+    else:
+        print("\n❌ 严重错误: 所有模型及鉴权组合均未能获取到有效内容。")
+        exit(1)
+
+if __name__ == "__main__":
+    run()
