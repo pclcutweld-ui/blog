@@ -3,28 +3,22 @@ import random
 import json
 import requests
 
-# 🔐 从 GitHub Secrets 中安全提取 Key
-API_KEY = os.environ.get("GEMINI_API_KEY")
-if not API_KEY:
-    # 仅作为本地无环境变量时的兜底
-    API_KEY = "AQ.Ab8RN6LQ5X39phfGPx5a16d4wDtfUqrPudlsdCgQ7VcTIEHOGQ"
-
-# 🧼 强力清洗 Key 中可能夹带的空格、换行符或意外符号
-API_KEY = API_KEY.strip().replace("[", "").replace("]", "")
+# 🔐 终极硬核配置：直接将你测试通过的特殊 API 密钥物理焊死在这里（绝无符号污染）
+API_KEY = "AQ.Ab8RN6LQ5X39phfGPx5a16d4wDtfUqrPudlsdCgQ7VcTIEHOGQ"
 
 def get_keywords_and_topic():
-    """从本地 keywords.txt 读取关键词"""
+    """从本地 keywords.txt 随机抽取关键词"""
     try:
         with open("keywords.txt", "r", encoding="utf-8") as f:
             keywords = [line.strip() for line in f if line.strip()]
         selected = random.sample(keywords, min(2, len(keywords)))
         return " and ".join(selected)
     except Exception:
-        return "High-Power CNC Fiber Laser Cutting Technology for Heavy Steel Fabrication"
+        return "High-Efficiency CNC Fiber Laser Cutting Technology for Industrial Steel Fabrication"
 
 def generate_article_body(topic):
-    """使用最纯净的标准 Google AI 开发者网关，拒绝任何路径污染"""
-    print(f"🤖 正在通过云端安全网关调用 Gemini 2.5-Flash，主题：{topic}...")
+    print(f"🤖 正在通过底层标准通道调用 Gemini 2.5-Flash...")
+    print(f"📝 正在创作主题: {topic}")
     
     prompt = f"""You are a senior industrial technical writer for PCL Group (CNC Fiber Laser Cutting & Welding Automation Manufacturer).
     Write a comprehensive, professional, SEO-optimized B2B blog post in English about: "{topic}".
@@ -38,9 +32,9 @@ def generate_article_body(topic):
     6. Strictly AVOID wrapping the response in markdown code blocks like ```html. Return raw text with HTML tags directly.
     """
     
-    # ⚡ 换用标准精简版官方接口，避开了所有可能产生 InvalidSchema 的长路径坑
+    # 使用最简洁明了的官方基础终点，彻底规避大括号解析歧义
     url = f"[https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=](https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=){API_KEY}"
-    
+
     headers = {"Content-Type": "application/json"}
     payload = {
         "contents": [{
@@ -49,25 +43,20 @@ def generate_article_body(topic):
     }
     
     try:
-        # 强制清除 URL 中可能被编译出的脏字符
-        clean_url = url.strip()
-        response = requests.post(clean_url, headers=headers, json=payload)
+        response = requests.post(url, headers=headers, json=payload)
         response.raise_for_status()
         data = response.json()
         
-        # 提取生成的网页正文
+        # 剥离并清洗可能混入的 Markdown 代码块标记
         ai_text = data['candidates'][0]['content']['parts'][0]['text']
-        
-        # 过滤可能混入的 Markdown 标记
         cleaned_text = ai_text.replace("```html", "").replace("```", "").strip()
         return cleaned_text
+        
     except Exception as e:
         print("\n❌ 接口请求失败！")
         if 'response' in locals():
             print(f"🔴 错误状态码: {response.status_code}")
-            print(f"🔴 后台响应体: {response.text}")
-        else:
-            print(f"🔴 系统级报错: {str(e)}")
+            print(f"🔴 后台错误体: {response.text.replace(API_KEY, 'HIDDEN_KEY')}")
         raise e
 
 def build_static_page():
@@ -75,7 +64,7 @@ def build_static_page():
     title = f"Latest Breakthroughs in {topic}"
     html_content = generate_article_body(topic)
     
-    # 🎨 工业数字化美化模板
+    # 🎨 工业数字化精美模板（保持一贯的高端大气工业感）
     full_template = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -106,11 +95,11 @@ def build_static_page():
 </body>
 </html>"""
 
+    # 直接重写首页 index.html，让 Cloudflare Pages 瞬间抓取
     output_filename = "index.html"
     with open(output_filename, "w", encoding="utf-8") as f:
         f.write(full_template)
-    
-    print(f"🎉 自动化出稿完毕！已成功生成静态网页文件: {output_filename}")
+    print(f"🎉 自动化出稿完毕！已成功生成并覆盖静态网页文件: {output_filename}")
 
 if __name__ == "__main__":
     build_static_page()
