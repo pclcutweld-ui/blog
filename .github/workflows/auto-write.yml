@@ -5,8 +5,8 @@ on:
     branches:
       - master
   schedule:
-    - cron: '0 0 * * *' # 保持每日自动定时更新
-  workflow_dispatch: # 允许你随时在页面上手动点击运行
+    - cron: '0 0 * * *' # 每天自动定时触发
+  workflow_dispatch: # 按钮手动触发
 
 jobs:
   build:
@@ -21,22 +21,17 @@ jobs:
         with:
           python-version: '3.10'
 
-      # ⚡ 核心依赖：只安装最基础的 requests 请求库
-      - name: Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install requests
+      - name: Install Requests Library
+        run: pip install requests
 
-      # 🚀 极其纯净的执行命令：用双引号把 Secret 严密包覆，并直接挂载为标准环境变量
+      # 🚀 直接无压力跑脚本，不需要配置复杂的环境变量挂载了
       - name: Run generation script
-        env:
-          GEMINI_API_KEY: "${{ secrets.GEMINI_API_KEY }}"
         run: python generate_blog.py
 
-      # 💾 检查生成结果，自动将 index.html 和变动打包提交回 master 分支
+      # 💾 将生成的 index.html 自动推送更新
       - name: Commit and Push Changes
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           git add .
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-generated technical insights safely" && git push origin master)
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Pure standalone auto-blog deployment" && git push origin master)
