@@ -1,13 +1,16 @@
 import os
 import random
 import json
-import requests  # 引入请求库，绕过 SDK 凭证限制
+import requests
 
-# 🔐 安全读取 GitHub Secrets 传进来的 Key
+# 🔐 从 GitHub Secrets 中安全提取 Key
 API_KEY = os.environ.get("GEMINI_API_KEY")
 if not API_KEY:
-    # 兜底测试 Key
+    # 仅作为本地无环境变量时的兜底
     API_KEY = "AQ.Ab8RN6LQ5X39phfGPx5a16d4wDtfUqrPudlsdCgQ7VcTIEHOGQ"
+
+# 🧼 强力清洗 Key 中可能夹带的空格、换行符或意外符号
+API_KEY = API_KEY.strip().replace("[", "").replace("]", "")
 
 def get_keywords_and_topic():
     """从本地 keywords.txt 读取关键词"""
@@ -20,7 +23,7 @@ def get_keywords_and_topic():
         return "High-Power CNC Fiber Laser Cutting Technology for Heavy Steel Fabrication"
 
 def generate_article_body(topic):
-    """通过底层的 HTTP 请求直接和你的 Vertex API 通信，完美解决 401 报错"""
+    """使用最纯净的标准 Google AI 开发者网关，拒绝任何路径污染"""
     print(f"🤖 正在通过云端安全网关调用 Gemini 2.5-Flash，主题：{topic}...")
     
     prompt = f"""You are a senior industrial technical writer for PCL Group (CNC Fiber Laser Cutting & Welding Automation Manufacturer).
@@ -35,8 +38,8 @@ def generate_article_body(topic):
     6. Strictly AVOID wrapping the response in markdown code blocks like ```html. Return raw text with HTML tags directly.
     """
     
-    # ⚡ 使用 Vertex AI 专属的公开 API 终点，直接携带 Key 访问，GitHub Actions 环境完美通行
-    url = f"[https://us-central1-aiplatform.googleapis.com/v1/projects/329474420473/locations/us-central1/publishers/google/models/gemini-2.5-flash:generateContent?key=](https://us-central1-aiplatform.googleapis.com/v1/projects/329474420473/locations/us-central1/publishers/google/models/gemini-2.5-flash:generateContent?key=){API_KEY}"
+    # ⚡ 换用标准精简版官方接口，避开了所有可能产生 InvalidSchema 的长路径坑
+    url = f"[https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=](https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=){API_KEY}"
     
     headers = {"Content-Type": "application/json"}
     payload = {
@@ -46,18 +49,25 @@ def generate_article_body(topic):
     }
     
     try:
-        response = requests.post(url, headers=headers, json=payload)
+        # 强制清除 URL 中可能被编译出的脏字符
+        clean_url = url.strip()
+        response = requests.post(clean_url, headers=headers, json=payload)
         response.raise_for_status()
         data = response.json()
         
-        # 解析返回的 HTML 正文
+        # 提取生成的网页正文
         ai_text = data['candidates'][0]['content']['parts'][0]['text']
         
-        # 兜底清洗可能存在的 Markdown 标签
+        # 过滤可能混入的 Markdown 标记
         cleaned_text = ai_text.replace("```html", "").replace("```", "").strip()
         return cleaned_text
     except Exception as e:
-        print(f"❌ 接口请求失败，详细响应日志: {response.text if 'response' in locals() else str(e)}")
+        print("\n❌ 接口请求失败！")
+        if 'response' in locals():
+            print(f"🔴 错误状态码: {response.status_code}")
+            print(f"🔴 后台响应体: {response.text}")
+        else:
+            print(f"🔴 系统级报错: {str(e)}")
         raise e
 
 def build_static_page():
