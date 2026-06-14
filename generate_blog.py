@@ -1,22 +1,16 @@
 import os
 import random
-from google import genai
+import json
+import requests  # 引入请求库，绕过 SDK 凭证限制
 
-# 🔐 安全核心：从 GitHub Secrets 传递的环境变量中读取 API Key
-# 这样代码里就不会包含任何敏感明文，绝对安全！
+# 🔐 安全读取 GitHub Secrets 传进来的 Key
 API_KEY = os.environ.get("GEMINI_API_KEY")
-
-# 如果在本地测试时没有配置环境变量，可作为本地测试的兜底（GitHub 运行时会自动走上面那行）
 if not API_KEY:
+    # 兜底测试 Key
     API_KEY = "AQ.Ab8RN6LQ5X39phfGPx5a16d4wDtfUqrPudlsdCgQ7VcTIEHOGQ"
 
-client = genai.Client(
-    vertexai=True,   # 核心：保持你测试成功的重要参数
-    api_key=API_KEY
-)
-
 def get_keywords_and_topic():
-    """从本地 keywords.txt 读取关键词并组合一个工业硬核主题"""
+    """从本地 keywords.txt 读取关键词"""
     try:
         with open("keywords.txt", "r", encoding="utf-8") as f:
             keywords = [line.strip() for line in f if line.strip()]
@@ -26,8 +20,8 @@ def get_keywords_and_topic():
         return "High-Power CNC Fiber Laser Cutting Technology for Heavy Steel Fabrication"
 
 def generate_article_body(topic):
-    """调用最新的 Gemini 2.5 系列模型撰写长文"""
-    print(f"🤖 正在调用 Gemini 2.5-Flash 撰写深度技术文章，主题：{topic}...")
+    """通过底层的 HTTP 请求直接和你的 Vertex API 通信，完美解决 401 报错"""
+    print(f"🤖 正在通过云端安全网关调用 Gemini 2.5-Flash，主题：{topic}...")
     
     prompt = f"""You are a senior industrial technical writer for PCL Group (CNC Fiber Laser Cutting & Welding Automation Manufacturer).
     Write a comprehensive, professional, SEO-optimized B2B blog post in English about: "{topic}".
@@ -41,13 +35,30 @@ def generate_article_body(topic):
     6. Strictly AVOID wrapping the response in markdown code blocks like ```html. Return raw text with HTML tags directly.
     """
     
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=prompt
-    )
+    # ⚡ 使用 Vertex AI 专属的公开 API 终点，直接携带 Key 访问，GitHub Actions 环境完美通行
+    url = f"[https://us-central1-aiplatform.googleapis.com/v1/projects/329474420473/locations/us-central1/publishers/google/models/gemini-2.5-flash:generateContent?key=](https://us-central1-aiplatform.googleapis.com/v1/projects/329474420473/locations/us-central1/publishers/google/models/gemini-2.5-flash:generateContent?key=){API_KEY}"
     
-    cleaned_text = response.text.replace("```html", "").replace("```", "").strip()
-    return cleaned_text
+    headers = {"Content-Type": "application/json"}
+    payload = {
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }]
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        data = response.json()
+        
+        # 解析返回的 HTML 正文
+        ai_text = data['candidates'][0]['content']['parts'][0]['text']
+        
+        # 兜底清洗可能存在的 Markdown 标签
+        cleaned_text = ai_text.replace("```html", "").replace("```", "").strip()
+        return cleaned_text
+    except Exception as e:
+        print(f"❌ 接口请求失败，详细响应日志: {response.text if 'response' in locals() else str(e)}")
+        raise e
 
 def build_static_page():
     topic = get_keywords_and_topic()
